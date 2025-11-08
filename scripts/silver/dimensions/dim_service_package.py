@@ -31,7 +31,7 @@ Transformations:
     2. Get DISTINCT combinations of all service attributes
     
     3. Derive Attributes:
-       - Total service count (0-6)
+       - Total service count (0-8)
        - Service tier (Basic/Standard/Premium)
        - Bundle type (Double play/Single service)
     
