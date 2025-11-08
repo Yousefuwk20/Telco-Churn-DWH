@@ -13,6 +13,9 @@ Source Tables:
 Target Table:
     - silver_telco.dim_location
 
+Grain:
+    One row per unique zip code
+
 Transformations:
     - Standardize city names (title case)
     - Format zip codes (5 digits)
@@ -29,8 +32,8 @@ Usage:
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 from pyspark.sql.functions import (
-    col, trim, initcap, lpad, split,
-    when, current_timestamp, row_number
+    col, trim, initcap, lpad,
+    when, row_number
 )
 from pyspark.sql.window import Window
 
@@ -42,20 +45,27 @@ spark = SparkSession.builder \
 
 spark.sparkContext.setLogLevel("OFF")
 
-# 1. Read Bronze Tables
+# =============================================================================
+# Read Bronze Tables
+# =============================================================================
+
 location_df = spark.table("bronze_telco.location")
 population_df = spark.table("bronze_telco.population")
 
 print(f"bronze_telco.location: {location_df.count()} rows")
 print(f"bronze_telco.population: {population_df.count()} rows")
 
-# 2. Data Cleaning - Location Table
+# =============================================================================
+# Data Cleaning - Location Table
+# =============================================================================
+    
 location_clean = location_df \
     .dropDuplicates(['zip_code']) \
     .select(
         col('zip_code').alias('zip_code_raw'),
         col('city').alias('city_raw'),
-        col('lat_long').alias('lat_long_raw')
+        col('latitude').alias('latitude_raw'),
+        col('longitude').alias('longitude_raw')
     )
 
 # Standardize city names (title case)
@@ -70,14 +80,15 @@ location_clean = location_clean.withColumn(
     lpad(trim(col('zip_code_raw')), 5, '0')
 )
 
-# Parse latitude and longitude from "Lat Long" field
+# Round coordinates to 4 decimal places
 location_clean = location_clean.withColumn(
     'latitude',
-    F.round(split(col('lat_long_raw'), ',').getItem(0).cast('double'), 4)
+    F.round(col('latitude_raw').cast('double'), 4)
 ).withColumn(
     'longitude',
-    F.round(split(col('lat_long_raw'), ',').getItem(1).cast('double'), 4)
+    F.round(col('longitude_raw').cast('double'), 4)
 )
+
 
 # Validate coordinate ranges
 location_clean = location_clean \
@@ -86,7 +97,10 @@ location_clean = location_clean \
 
 print(f"Location data cleaned: {location_clean.count()} rows")
 
-# 3. Data Cleaning - Population Table
+# =============================================================================
+# Data Cleaning - Population Table
+# =============================================================================
+
 population_clean = population_df \
     .dropDuplicates(['zip_code']) \
     .select(
@@ -105,19 +119,19 @@ population_clean = population_clean.withColumn(
     F.regexp_replace(col('population'), '[^0-9.]', '')
 )
 
-# Cast to integer
+# Cast to integer and handle missing populations with 0
 population_clean = population_clean.withColumn(
     'population',
     when(col('population') == '', 0)
     .otherwise(col('population').cast('double').cast('int'))
 )
 
-# Handle missing populations with 0
-population_clean = population_clean.fillna({'population': 0})
-
 print(f"Population data cleaned: {population_clean.count()} rows")
 
-# 4. Join Location and Population Tables
+# =============================================================================
+# Join Location and Population Tables
+# =============================================================================
+
 dim_location = location_clean.join(
     population_clean,
     on='zip_code',
@@ -126,7 +140,10 @@ dim_location = location_clean.join(
 
 print(f"Joined data: {dim_location.count()} rows")
 
-# 5. Derive Population Density Category
+# =============================================================================
+# Derive Population Density Category
+# =============================================================================
+
 dim_location = dim_location.withColumn(
     'population_density',
     when(col('population') >= 75000, 'Urban')
@@ -134,18 +151,19 @@ dim_location = dim_location.withColumn(
     .otherwise('Rural')
 )
 
-# 6. Generate Surrogate Key
+# =============================================================================
+# Generate Surrogate Key
+# =============================================================================
+
 window_spec = Window.orderBy('zip_code')
 dim_location = dim_location.withColumn(
     'location_key',
     row_number().over(window_spec)
 )
 
-# 7. Add Audit Columns
-dim_location = dim_location.withColumn('created_date', current_timestamp())
-dim_location = dim_location.withColumn('updated_date', current_timestamp())
-
-# 8. Select Final Columns
+# =============================================================================
+# Select Final Columns
+# =============================================================================
 dim_location_final = dim_location.select(
     'location_key',
     'city',
@@ -153,12 +171,13 @@ dim_location_final = dim_location.select(
     'latitude',
     'longitude',
     'population',
-    'population_density',
-    'created_date',
-    'updated_date'
+    'population_density'
 )
 
-# 9. Write to Silver Layer
+# =============================================================================
+# Write to Silver Layer
+# =============================================================================
+
 dim_location_final.write \
     .mode('overwrite') \
     .format('parquet') \
