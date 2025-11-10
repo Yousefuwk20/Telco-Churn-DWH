@@ -3,13 +3,14 @@
 Silver Layer ETL Pipeline - Conformed Dimensions
 ===============================================================================
 Pipeline Flow:
-    1. Load all 6 dimensions in parallel:
+    1. Load all 6 dimensions and fact_base in parallel:
        - dim_customer
        - dim_service_package
        - dim_location
        - dim_churn_status
        - dim_quarter
        - dim_promotion
+       - facts_base
     2. Validate dimension data quality
 
 Schedule: Daily
@@ -19,7 +20,6 @@ Dependencies: Requires bronze_telco tables to exist
 
 from airflow.decorators import dag, task
 from airflow.providers.apache.spark.operators.spark_submit import SparkSubmitOperator
-from airflow.sensors.external_task import ExternalTaskSensor
 from datetime import datetime, timedelta
 
 
@@ -43,12 +43,13 @@ SPARK_COMMON_CONFIG = {
 }
 
 DIMENSIONS = [
-    {'name': 'customer', 'executor_memory': '2g', 'driver_memory': '1g'},
-    {'name': 'service_package', 'executor_memory': '2g', 'driver_memory': '1g'},
-    {'name': 'location', 'executor_memory': '2g', 'driver_memory': '1g'},
-    {'name': 'churn_status', 'executor_memory': '1g', 'driver_memory': '1g'},
-    {'name': 'quarter', 'executor_memory': '1g', 'driver_memory': '1g'},
-    {'name': 'promotion', 'executor_memory': '1g', 'driver_memory': '1g'},
+    {'name': 'dim_customer', 'executor_memory': '2g', 'driver_memory': '1g'},
+    {'name': 'dim_service_package', 'executor_memory': '2g', 'driver_memory': '1g'},
+    {'name': 'dim_location', 'executor_memory': '2g', 'driver_memory': '1g'},
+    {'name': 'dim_churn_status', 'executor_memory': '1g', 'driver_memory': '1g'},
+    {'name': 'dim_quarter', 'executor_memory': '1g', 'driver_memory': '1g'},
+    {'name': 'dim_promotion', 'executor_memory': '1g', 'driver_memory': '1g'},
+    {'name': 'facts_base', 'executor_memory': '1g', 'driver_memory': '1g'}
 ]
 
 @dag(
@@ -68,7 +69,7 @@ def silver_pipeline():
     for dim in DIMENSIONS:
         dim_task = SparkSubmitOperator(
             task_id=f'load_dim_{dim["name"]}',
-            application=f'/root/airflow/dags/scripts/silver/dim_{dim["name"]}.py',
+            application=f'/root/airflow/dags/scripts/silver/{dim["name"]}.py',
             executor_memory=dim['executor_memory'],
             driver_memory=dim['driver_memory'],
             name=f'dim_{dim["name"]}_job',
@@ -89,7 +90,7 @@ def silver_pipeline():
         all_valid = True
         
         for dim in DIMENSIONS:
-            dim_name = f"dim_{dim['name']}"
+            dim_name = f"{dim['name']}"
             
             query = f"SELECT COUNT(*) FROM silver_telco.{dim_name};"
             result = hook.run_cli(hql=query)

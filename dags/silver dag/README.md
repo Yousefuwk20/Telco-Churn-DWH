@@ -1,7 +1,7 @@
 # Silver Layer DAG
 
 ## Overview
-Daily ETL pipeline for the Silver layer of the Telco Customer Churn Data Warehouse. Loads 6 conformed dimension tables and validates data quality.
+Daily ETL pipeline for the Silver layer of the Telco Customer Churn Data Warehouse. Loads 6 conformed dimension tables and fact_base and validates data quality.
 
 ### Tasks
 
@@ -41,13 +41,19 @@ Daily ETL pipeline for the Silver layer of the Telco Customer Churn Data Warehou
    - **Purpose:** Creates promotional offer mini-dimension
    - **Output:** `silver_telco.dim_promotion` table in HDFS
 
-7. **validate_dimensions**
+7. **load_fact_base**
+   - **Type:** SparkSubmitOperator
+   - **Script:** `/root/airflow/dags/scripts/silver/facts/fact_base.py`
+   - **Purpose:** Creates the facts base table
+   - **Output:** `silver_telco.fact_base` table in HDFS
+
+8. **validate_dimensions**
    - **Type:** @task 
-   - **Purpose:** Validates all 6 dimension tables have data
+   - **Purpose:** Validates all 6 dimension tables and fact_base have data
    - **Method:** HiveCliHook with COUNT(*) queries
    - **Validation Rules:** Each dimension must have > 0 rows
 
-8. **log_completion**
+9. **log_completion**
    - **Type:** @task 
    - **Purpose:** Logs pipeline completion timestamp
 

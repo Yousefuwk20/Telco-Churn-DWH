@@ -12,7 +12,8 @@ Tables:
     - dim_location: Location dimension with SCD Type 1
     - dim_churn_status: Churn status mini-dimension
     - dim_quarter: Quarterly time dimension
-    - dim_promotion: Promotion mini-dimension 
+    - dim_promotion: Promotion mini-dimension
+    - facts_base: Cleaned fact measures (single source of truth for Gold layer) 
 
 Usage:
     spark-submit ddl_silver.py
@@ -147,8 +148,46 @@ spark.sql("""
 
 print("dim_promotion created")
 
+# 7. Facts Base Table (Cleaned Measures - Single Source of Truth)
+spark.sql("""
+    CREATE TABLE IF NOT EXISTS silver_telco.facts_base (
+        -- Natural Keys (Define the grain)
+        customer_id STRING COMMENT 'Natural key for customer',
+        quarter STRING COMMENT 'Natural key for time snapshot (e.g., Q3-2025)',
+        
+        -- Raw Measures - Customer Tenure & Lifecycle
+        tenure_months INT COMMENT 'Tenure in months',
+        satisfaction_score INT COMMENT 'Satisfaction score (1-5)',
+        
+        -- Raw Measures - Churn Metrics
+        churn_value INT COMMENT 'Churn value (0=Active, 1=Churned)',
+        churn_score INT COMMENT 'Churn risk score (0-100)',
+        cltv INT COMMENT 'Customer Lifetime Value',
+        
+        -- Raw Measures - Financial (Monthly)
+        monthly_charges DECIMAL(10,2) COMMENT 'Monthly charges in dollars',
+        avg_monthly_long_distance_charges DECIMAL(10,2) COMMENT 'Average monthly long distance charges',
+        
+        -- Raw Measures - Financial (Total/Lifetime)
+        total_charges DECIMAL(10,2) COMMENT 'Total charges (lifetime)',
+        total_revenue DECIMAL(10,2) COMMENT 'Total revenue generated',
+        total_refunds DECIMAL(10,2) COMMENT 'Total refunds issued',
+        total_extra_data_charges DECIMAL(10,2) COMMENT 'Total extra data charges',
+        total_long_distance_charges DECIMAL(10,2) COMMENT 'Total long distance charges',
+        
+        -- Raw Measures - Service Usage
+        avg_monthly_gb_download INT COMMENT 'Average monthly GB download',
+        number_of_referrals INT COMMENT 'Number of friend referrals'
+    )
+    USING PARQUET
+    LOCATION 'hdfs://namenode:9000/user/data/telco/silver/facts_base'
+    COMMENT 'Base fact table with cleaned raw measures. Grain: (customer_id, quarter). Single source of truth for Gold layer.'
+""")
+
+print("facts_base created")
+
 # Refresh tables to update metadata
-tables = ['dim_customer', 'dim_service_package', 'dim_location', 'dim_churn_status', 'dim_quarter', 'dim_promotion']
+tables = ['dim_customer', 'dim_service_package', 'dim_location', 'dim_churn_status', 'dim_quarter', 'dim_promotion', 'facts_base']
 
 for table in tables:
     spark.sql(f"REFRESH TABLE silver_telco.{table}")
