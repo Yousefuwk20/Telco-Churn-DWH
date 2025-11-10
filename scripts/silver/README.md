@@ -43,6 +43,14 @@ The Silver layer contains **cleaned, standardized, and reusable dimension tables
 - **Key**: `promotion_key` (BIGINT hash-based)
 - **Attributes**: Offer type, referred a friend status
 
+### 7. **facts_base**
+- **Grain**: One row per customer per quarter: (customer_id, quarter)
+- **Type**: Base fact table (single source of truth for measures)
+- **Keys**: `customer_id` (STRING), `quarter` (STRING) - natural keys
+- **Measures**: 14 raw measures including tenure, satisfaction, churn metrics, financial measures, service usage
+- **Purpose**: Cleaned measures used by all Gold layer fact tables
+- **Design**: Raw truth only - no derived calculations, no dimensional attributes
+
 ## Execution Order
 
 Run scripts in this order:
@@ -58,6 +66,9 @@ spark-submit dimensions/dim_service_package.py
 spark-submit dimensions/dim_churn_status.py
 spark-submit dimensions/dim_quarter.py
 spark-submit dimensions/dim_promotion.py
+
+# 3. Load facts_base
+spark-submit dimensions/facts_base.py
 ```
 
 ## Key Design Decisions
